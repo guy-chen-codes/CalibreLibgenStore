@@ -36,41 +36,75 @@ class LibgenBook:
 
     @staticmethod
     def parse(node):
-        AUTHOR_XPATH = '/td[1]/ul/li/a'
+        # Updated XPath selectors for the new libgen.li structure
+        AUTHOR_XPATH = '/td[1]/a'
         SERIES_XPATH = '/td[2]'
-        TITLE_XPATH = '/td[3]/p/a'
+        TITLE_XPATH = '/td[3]/a'
         LANGUAGE_XPATH = '/td[4]'
         FILE_XPATH = '/td[5]'
-        MIRRORS_XPATH = '/td[6]//a'
+        MIRRORS_XPATH = '/td[6]/a'
 
-        # Parse the Author(s) column into `authors`
-        authors = ' & '.join(filter(None, [
-            author.text for author in xpath(node, AUTHOR_XPATH)
-        ]))
+        try:
+            # Parse the Author(s) column into `authors`
+            author_elements = xpath(node, AUTHOR_XPATH)
+            authors = ' & '.join(filter(None, [
+                author.text.strip() for author in author_elements if author.text
+            ]))
 
-        if len(authors) == 0:
-            authors = 'Unknown'
+            if len(authors) == 0:
+                authors = 'Unknown'
 
-        # Parse File and Mirrors columns into a list of mirrors
-        file_info = xpath(node, FILE_XPATH)[0].text
-        file_type, file_size = file_info.split(' / ')
-        file_size, file_size_unit = file_size.split('\xa0')
+            # Parse File column for file information
+            file_elements = xpath(node, FILE_XPATH)
+            if file_elements and file_elements[0].text:
+                file_info = file_elements[0].text.strip()
+                if ' / ' in file_info:
+                    file_type, file_size = file_info.split(' / ', 1)
+                    if '\xa0' in file_size:
+                        file_size, file_size_unit = file_size.split('\xa0', 1)
+                    else:
+                        file_size_unit = 'KB'  # Default unit
+                else:
+                    file_type = file_info
+                    file_size = '0'
+                    file_size_unit = 'KB'
+            else:
+                file_type = 'Unknown'
+                file_size = '0'
+                file_size_unit = 'KB'
 
-        mirrors = [
-            LibgenMirror.parse(n, file_type, file_size, file_size_unit)
-            for n in xpath(node, MIRRORS_XPATH)
-        ]
+            # Parse mirrors (download links)
+            mirror_elements = xpath(node, MIRRORS_XPATH)
+            mirrors = []
+            for mirror_elem in mirror_elements:
+                if mirror_elem.get('href'):
+                    mirrors.append(LibgenMirror.parse(mirror_elem, file_type, file_size, file_size_unit))
 
-        # Parse other columns
-        series = xpath(node, SERIES_XPATH)[0].text
-        title = xpath(node, TITLE_XPATH)[0].text
-        md5 = xpath(node, TITLE_XPATH)[0].get('href').split('/')[-1]
-        language = xpath(node, LANGUAGE_XPATH)[0].text
+            # Parse other columns
+            series_elements = xpath(node, SERIES_XPATH)
+            series = series_elements[0].text.strip() if series_elements and series_elements[0].text else ''
+            
+            title_elements = xpath(node, TITLE_XPATH)
+            if not title_elements:
+                return None
+                
+            title = title_elements[0].text.strip() if title_elements[0].text else ''
+            
+            # Extract MD5 from the title link href
+            title_href = title_elements[0].get('href', '')
+            md5 = title_href.split('/')[-1] if title_href else ''
+            
+            language_elements = xpath(node, LANGUAGE_XPATH)
+            language = language_elements[0].text.strip() if language_elements and language_elements[0].text else 'Unknown'
 
-        if not authors or not title:
+            if not authors or not title:
+                return None
+
+            return LibgenBook(title, authors, series, md5, mirrors, language, None)
+            
+        except Exception as e:
+            print(f"Error parsing book entry: {e}")
             return None
-
-        return LibgenBook(title, authors, series, md5, mirrors, language, None)
 
 
 class LibgenSearchResults:
@@ -80,51 +114,90 @@ class LibgenSearchResults:
 
     @staticmethod
     def parse(node):
-        SEARCH_ROW_SELECTOR = "/body/table/tbody/tr"
+        # Updated selector for the new table structure
+        SEARCH_ROW_SELECTOR = "//table[@class='c']/tbody/tr"
+        
+        # Fallback selector if the above doesn't work
+        FALLBACK_SELECTOR = "//table/tbody/tr"
 
         result_rows = xpath(node, SEARCH_ROW_SELECTOR)
+        
+        # If no results with the primary selector, try fallback
+        if not result_rows:
+            result_rows = xpath(node, FALLBACK_SELECTOR)
 
         results = []
 
         for row in result_rows:
-            book = LibgenBook.parse(row)
-            if book is None:
-                continue
+            try:
+                book = LibgenBook.parse(row)
+                if book is None:
+                    continue
 
-            results.append(book)
+                results.append(book)
+            except Exception as e:
+                print(f"Error parsing row: {e}")
+                continue
 
         total = len(results)
 
         return LibgenSearchResults(results, total)
 
 
-class LibgenFictionClient:
+class LibgenClient:
     def __init__(self, mirror=None):
 
         MIRRORS = [
-            "libgen.rs",
-            "libgen.is",
-            # "libgen.lc",  # Still has the old-style search
-            "gen.lib.rus.ec",
-            "93.174.95.27",
+            "libgen.li",
         ]
 
         if mirror is None:
-            self.base_url = "http://{}/fiction/".format(MIRRORS[0])
+            self.base_url = "https://{}/".format(MIRRORS[0])
         else:
-            self.base_url = "http://{}/fiction/".format(mirror)
+            self.base_url = "https://{}/".format(mirror)
 
     def search(self, query, criteria='', language='English', file_format=''):
-        url = self.base_url
-        query_params = {
-            'q': query,
-            'criteria': criteria,
-            'language': language,
-            'format': file_format,
+        url = self.base_url + "index.php"
+        
+        # Map criteria to the new column format
+        columns_map = {
+            'title': 't',
+            'authors': 'a', 
+            'series': 's',
+            'year': 'y',
+            'publisher': 'p',
+            'isbn': 'i'
         }
-        query_params = {k: v for k, v in query_params.items() if v is not None}
+        
+        # Default columns to search in
+        columns = ['t', 'a', 's', 'y', 'p', 'i']
+        
+        # If specific criteria is provided, focus on that column
+        if criteria and criteria in columns_map:
+            columns = [columns_map[criteria]]
+        
+        # Build query parameters according to new format
+        query_params = {
+            'req': query,
+            'res': 100,
+            'filesuns': 'all'
+        }
+        
+        # Add column parameters
+        for col in columns:
+            query_params[f'columns[]'] = col
+            
+        # Add object types (books, ebooks, etc.)
+        objects = ['f', 'e', 's', 'a', 'p', 'w']
+        for obj in objects:
+            query_params[f'objects[]'] = obj
+            
+        # Add topics (literature, comics, academic, etc.)
+        topics = ['l', 'c', 'f', 'a', 'm', 'r', 's']
+        for topic in topics:
+            query_params[f'topics[]'] = topic
 
-        query_string = urlencode(query_params)
+        query_string = urlencode(query_params, doseq=True)
         request = urlopen(url + '?' + query_string)
         html = request.read()
 
@@ -139,31 +212,50 @@ class LibgenFictionClient:
         return detail_url
 
     def get_download_url(self, md5):
-        download_urls = [
-            'http://library.lol/fiction/{}'.format(md5),
-        ]
+        # First, get the detail page to extract the key
+        detail_url = self.get_detail_url(md5)
+        
+        try:
+            request = urlopen(detail_url)
+            html = request.read()
 
-        for url in download_urls:
-            try:
-                request = urlopen(url)
-                html = request.read()
+            parser = etree.HTMLParser()
+            tree = etree.fromstring(html, parser)
 
-                parser = etree.HTMLParser()
-                tree = etree.fromstring(html, parser)
-
-                SELECTOR = "//h2/a[contains(., 'GET')]"
-                SELECTOR = "//a[contains(., 'GET')]"
-                link = tree.xpath(SELECTOR)
-                return link[0].get('href')
-            except:
-                continue
+            # Look for download links that contain the md5
+            download_links = tree.xpath("//a[contains(@href, 'get.php') and contains(@href, '" + md5 + "')]")
+            
+            if download_links:
+                # Extract the full download URL
+                download_url = download_links[0].get('href')
+                if download_url.startswith('/'):
+                    download_url = self.base_url.rstrip('/') + download_url
+                elif not download_url.startswith('http'):
+                    download_url = self.base_url + download_url
+                return download_url
+            
+            # Alternative: look for any link containing 'get.php'
+            alt_links = tree.xpath("//a[contains(@href, 'get.php')]")
+            if alt_links:
+                download_url = alt_links[0].get('href')
+                if download_url.startswith('/'):
+                    download_url = self.base_url.rstrip('/') + download_url
+                elif not download_url.startswith('http'):
+                    download_url = self.base_url + download_url
+                return download_url
+                
+        except Exception as e:
+            print(f"Error getting download URL: {e}")
+            
+        # Fallback: construct the download URL (this may not work without the key)
+        return f"{self.base_url}get.php?md5={md5}"
 
 def main(argv):
     import argparse
 
-    client = LibgenFictionClient()
+    client = LibgenClient()
 
-    parser = argparse.ArgumentParser(description="Use Libgen.Fiction from the command line")
+    parser = argparse.ArgumentParser(description="Use Libgen from the command line")
     parser.add_argument('--query', '-q', help="Search query")
     parser.add_argument('--title', '-t', help="Title to search for")
     parser.add_argument('--author', '-a', help="Author to search for")
@@ -187,16 +279,25 @@ def main(argv):
         query = args.series
         criteria = "series"
 
-    print(query+" "+criteria)
+    print(f"Searching for: '{query}' with criteria: '{criteria}'")
     if query:
-        search_results = client.search(query, criteria, args.language, args.format)
+        try:
+            search_results = client.search(query, criteria, args.language, args.format)
+            print(f"Found {search_results.total} results")
+            
+            for i, result in enumerate(search_results.results[:5], 1):
+                print(f"\n{i}. {result.title} by {result.authors}")
+                print(f"   Series: {result.series}")
+                print(f"   Language: {result.language}")
+                print(f"   Detail: {client.get_detail_url(result.md5)}")
+                
+                download_url = client.get_download_url(result.md5)
+                print(f"   Download: {download_url}")
+                
+        except Exception as e:
+            print(f"Error during search: {e}")
     else:
         sys.exit()
-
-    for result in search_results.results[:5]:
-        print(result.title + " by " + result.authors)
-        print("Detail", client.get_detail_url(result.md5))
-        print("Download", client.get_download_url(result.md5))
 
 
 if __name__ == "__main__":

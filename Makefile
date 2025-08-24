@@ -1,6 +1,6 @@
 version = 0.4.3
 
-zip_file = releases/Libgen Fiction v$(version).zip
+zip_file = releases/Libgen v$(version).zip
 zip_contents = *.py LICENSE *.md *.txt
 
 all: zip

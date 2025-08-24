@@ -11,7 +11,7 @@ from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
 from PyQt5.Qt import QUrl
 
-from calibre_plugins.libgen_fiction.libgen_client import LibgenFictionClient
+from calibre_plugins.libgen.libgen_client import LibgenClient
 
 if numeric_version >= (5, 5, 0):
     module_debug_print = partial(root_debug_print, ' the_eye:__init__:', sep='')
@@ -22,8 +22,8 @@ __license__        = 'MIT'
 __copyright__      = 'fallaciousreasoning'
 __docformat__      = 'restructuredtext en'
 
-PLUGIN_NAME        = 'Libgen Fiction'
-PLUGIN_DESCRIPTION = 'Adds a Libgen Fiction search provider to calibre'
+PLUGIN_NAME        = 'Libgen'
+PLUGIN_DESCRIPTION = 'Adds a Libgen search provider to calibre'
 PLUGIN_AUTHORS     = 'fallaciousreasoning (https://github.com/fallaciousreasoning/CalibreLibgenStore)'
 PLUGIN_VERSION     = (0, 4, 3)
 
@@ -34,7 +34,7 @@ class LibgenStore(StorePlugin):
         debug_print = partial(module_debug_print, 'LibgenStore:genesis:')
         debug_print('start')
 
-        self.libgen = LibgenFictionClient()
+        self.libgen = LibgenClient()
 
     def search(self, query, max_results=10, timeout=60):
         """Searches LibGen for Books. Since the mirror links are not direct
