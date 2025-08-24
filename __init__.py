@@ -11,12 +11,12 @@ from calibre.gui2.store.search_result import SearchResult
 from calibre.gui2.store.web_store_dialog import WebStoreDialog
 from PyQt5.Qt import QUrl
 
-from calibre_plugins.libgen.libgen_client import LibgenClient
+from calibre_plugins.libgen_fiction.libgen_client import LibgenClient
 
 if numeric_version >= (5, 5, 0):
-    module_debug_print = partial(root_debug_print, ' the_eye:__init__:', sep='')
+    module_debug_print = partial(root_debug_print, ' libgen:__init__:', sep='')
 else:
-    module_debug_print = partial(root_debug_print, 'the_eye:__init__:')
+    module_debug_print = partial(root_debug_print, 'libgen:__init__:')
 
 __license__        = 'MIT'
 __copyright__      = 'fallaciousreasoning'

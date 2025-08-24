@@ -25,7 +25,9 @@ A Libgen store plugin for Calibre
 - Updated all references and documentation accordingly
 
 ## What's Changed
-This plugin was originally designed specifically for Libgen Fiction, but has been updated to work with the broader Libgen library.
+This plugin was originally designed specifically for Libgen Fiction, but has been completely updated to work with the broader Libgen library. The plugin name has been changed from "Libgen Fiction" to "Libgen" to reflect the expanded scope.
+
+**Note**: The internal plugin namespace remains `libgen_fiction` for backward compatibility with existing installations, but all user-facing references now use "Libgen" and the plugin searches all available content types on libgen.li.
 
 ## Testing & development
 
